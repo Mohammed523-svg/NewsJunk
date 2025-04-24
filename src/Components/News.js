@@ -1,43 +1,34 @@
-import React, { Component } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import NewsItem from "./NewsItem";
 import Spinner from "./Spinner";
-import PropTypes from 'prop-types'
 import InfiniteScroll from "react-infinite-scroll-component";
 
 
-export class News extends Component {
-  articles = [];
+const News = (props) => {
+  const [articles, setArticles] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [newsNumber, setNewsNumber] = useState(0);
+  const [totalArticles, setTotalArticles] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
 
-  static defaultProps = {
-    country: 'us',
-    pageSize: 8,
-    category: 'general',
+  const isFirstRender = useRef(true); // Ref to track the first render
+
+  const capatalizeFirstLetter = (string) => {
+    return string.charAt(0).toUpperCase() + string.slice(1)
   }
 
-  static propTypes = {
-    country: PropTypes.string,
-    pageSize: PropTypes.number,
-    category: PropTypes.string,
-  }
-
-  capatalizeFirstLetter(string) {
-    return string.charAt(0).toUpperCase() + string.slice(1);
-  }
-
-  constructor(props) {
-    super(props);
-    this.state = {
-      articles: [],
-      loading: true,
-      page: 1,
-      totalArticles: 0,
-      hasMore: true
+  const debounce = (func, delay) => {
+    let timer;
+    return (...args) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => func(...args), delay);
     };
-    document.title = `NewsJunk - ${this.capatalizeFirstLetter(this.props.category)}`;
-  }
+  };
 
-  badgeColor(){
-    switch (this.props.category) {
+    // document.title = `NewsJunk - ${capatalizeFirstLetter(props.category)}`;
+
+  const badgeColor = () => {
+    switch (props.category) {
       case "health":
         return "success";
         break;
@@ -65,86 +56,67 @@ export class News extends Component {
     }
   }
 
-  async updateNews() {
-    this.props.setProgress(10);
-    let url = `https://newsapi.org/v2/top-headlines?country=${this.props.country}&category=${this.props.category}&apiKey=4a57f5d6fac849d6bf97a37e54e12d46&pageSize=${this.props.pageSize}&page=${
-      this.state.page 
-    }`;
-    this.setState({loading: true});
+  const updateNews = async () => {
+    props.setProgress(10);
+    let url = `http://api.mediastack.com/v1/news?access_key=${props.apiKey}&categories=${props.category}&limit=${props.pageSize}&offset=${newsNumber}&languages=${props.language}&countries${props.country}`;
+    setLoading(true);
     let data = await fetch(url);
-    this.props.setProgress(30);
+    props.setProgress(30);
     let parsedData = await data.json();
-    this.props.setProgress(70);
-    this.setState({ articles: parsedData.articles });
-    this.setState({
-      articles: parsedData.articles,
-      totalArticles: parsedData.totalResults,
-      loading: false,
-    });
-    this.props.setProgress(100);
+    props.setProgress(70);
+    setArticles(parsedData.data);
+    setTotalArticles(parsedData.total);
+    setNewsNumber(props.pageSize);
+    setLoading(false);
+    props.setProgress(100);
   }
 
-  async componentDidMount() {
-    this.updateNews();
-  }
-
-  handlePrevClick = async () => {
-    this.setState({page: this.state.page - 1});
-    this.updateNews();
-  };
-
-  handleNextClick = async () => {
-    this.setState({page: this.state.page + 1});
-    this.updateNews();
-  };
-
-  fetchMoreData = async () => {
-    if (this.state.articles.length >= this.state.totalArticles) {
-      this.setState({ hasMore: false });
+  const fetchMoreData = async () => {
+    if (articles.length >= totalArticles || articles.length === 30) {
+      setHasMore(false);
       return;
     }
-  
-    this.setState({page: this.state.page + 1});
-    let url = `https://newsapi.org/v2/top-headlines?country=${this.props.country}&category=${this.props.category}&apiKey=4a57f5d6fac849d6bf97a37e54e12d46&pageSize=${this.props.pageSize}&page=${
-      this.state.page 
-    }`;
+    let url = `http://api.mediastack.com/v1/news?access_key=${props.apiKey}&categories=${props.category}&limit=${props.pageSize}&offset=${newsNumber + props.pageSize}&languages=${props.language}&countries${props.country}`;
+    setNewsNumber(newsNumber+props.pageSize);
     let data = await fetch(url);
     let parsedData = await data.json();
-    console.log(parsedData);
-    
-    this.setState({ articles: parsedData.articles });
-    this.setState({
-      articles: this.state.articles.concat(parsedData.articles),
-      totalArticles: parsedData.totalResults,
-    });
+    setArticles(articles.concat(parsedData.data));
+    setTotalArticles(parsedData.total);
   };
 
-  render() {
+  const debouncedUpdateNews = debounce(updateNews, 500);
+
+useEffect(() => {
+  debouncedUpdateNews(); // Call the debounced function
+  document.title = `NewsJunk - ${capatalizeFirstLetter(props.category)}`;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [props.category, props.language, props.country]);
+
     return (
       <>
-        <h1 className="text-center">NewsJunk - Top {this.capatalizeFirstLetter(this.props.category)} Headlines</h1>
-        {this.state.loading && <Spinner />}
+        <h1 className="text-center" style={{'margin': '2em 0 0.5em'}}>NewsJunk - Top {capatalizeFirstLetter(props.category)} Headlines</h1>
+        {loading && <Spinner />}
 
         <InfiniteScroll
-          dataLength={this.state.articles.length}
-          next={this.fetchMoreData}
-          hasMore={this.state.hasMore}
+          dataLength={articles.length}
+          next={fetchMoreData}
+          hasMore={hasMore}
           loader={<Spinner />}
         >
           <div className="container">
             <div className="row">
-              {this.state.articles.map((element, index) => {
+              {articles.map((element, index) => {
                 return (
                   <div className="col-md-4" key={index}>
                     <NewsItem
                       title={element.title}
                       description={element.description}
-                      imageUrl={element.urlToImage}
+                      imageUrl={element.image}
                       newsUrl={element.url}
                       author={element.author}
-                      date={element.publishedAt}
-                      source={element.source.name}
-                      badgeColor={this.badgeColor()}
+                      date={element.published_at}
+                      source={element.source}
+                      badgeColor={badgeColor()}
                     />
                   </div>
                 );
@@ -155,6 +127,5 @@ export class News extends Component {
       </>
     );
   }
-}
 
 export default News;
